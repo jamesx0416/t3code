@@ -1552,9 +1552,7 @@ export default function Sidebar() {
                                           }`}
                                         >
                                           {formatRelativeTime(
-                                            thread.lastVisitedAt ??
-                                              thread.latestTurn?.completedAt ??
-                                              thread.createdAt,
+                                            thread.messages.at(-1)?.createdAt ?? thread.createdAt,
                                           )}
                                         </span>
                                       </div>
