@@ -407,6 +407,12 @@ function createSnapshotWithPendingUserInputThreads(): OrchestrationReadModel {
         ...baseSnapshot.threads[0]!,
         id: SECOND_THREAD_ID,
         title: "Secondary thread",
+        session: baseSnapshot.threads[0]!.session
+          ? {
+              ...baseSnapshot.threads[0]!.session,
+              threadId: SECOND_THREAD_ID,
+            }
+          : null,
         activities: [],
         messages: [
           createUserMessage({

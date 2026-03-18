@@ -664,8 +664,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
     (showPlanFollowUpPrompt && activeProposedPlan !== null);
   const composerFooterHasWideActions = showPlanFollowUpPrompt || activePendingProgress !== null;
   useEffect(() => {
+    if (!activeThread) {
+      return;
+    }
     clearInactivePendingUserInputDraftRequests(threadId, activePendingUserInputRequestIds);
-  }, [activePendingUserInputRequestIds, clearInactivePendingUserInputDraftRequests, threadId]);
+  }, [
+    activePendingUserInputRequestIds,
+    activeThread,
+    clearInactivePendingUserInputDraftRequests,
+    threadId,
+  ]);
   const lastSyncedPendingInputRef = useRef<{
     requestId: string | null;
     questionId: string | null;
@@ -3484,7 +3492,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
                     <ComposerPendingUserInputPanel
                       pendingUserInputs={pendingUserInputs}
-                      respondingRequestIds={respondingRequestIds}
+                      respondingRequestIds={respondingUserInputRequestIds}
                       answers={activePendingDraftAnswers}
                       questionIndex={activePendingQuestionIndex}
                       onSelectOption={onSelectActivePendingUserInputOption}
