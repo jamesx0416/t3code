@@ -1,40 +1,23 @@
-import { useCallback } from "react";
-import { Option, Schema } from "effect";
-import { type ProviderKind } from "@t3tools/contracts";
+import { useCallback, useEffect } from "react";
+import {
+  AppSettings as AppSettingsSchema,
+  DEFAULT_TIMESTAMP_FORMAT,
+  type ProviderKind,
+  type TimestampFormat,
+} from "@t3tools/contracts";
 import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
+import { getBootDesktopAppSettings, persistDesktopSettings } from "./desktopSettings";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 
-const APP_SETTINGS_STORAGE_KEY = "t3code:app-settings:v1";
+export const APP_SETTINGS_STORAGE_KEY = "t3code:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
-export const TIMESTAMP_FORMAT_OPTIONS = ["locale", "12-hour", "24-hour"] as const;
-export type TimestampFormat = (typeof TIMESTAMP_FORMAT_OPTIONS)[number];
-export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
+export { DEFAULT_TIMESTAMP_FORMAT };
+export type { TimestampFormat };
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
 };
 
-const AppSettingsSchema = Schema.Struct({
-  codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
-    Schema.withConstructorDefault(() => Option.some("")),
-  ),
-  codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
-    Schema.withConstructorDefault(() => Option.some("")),
-  ),
-  defaultThreadEnvMode: Schema.Literals(["local", "worktree"]).pipe(
-    Schema.withConstructorDefault(() => Option.some("local")),
-  ),
-  confirmThreadDelete: Schema.Boolean.pipe(Schema.withConstructorDefault(() => Option.some(true))),
-  enableAssistantStreaming: Schema.Boolean.pipe(
-    Schema.withConstructorDefault(() => Option.some(false)),
-  ),
-  timestampFormat: Schema.Literals(["locale", "12-hour", "24-hour"]).pipe(
-    Schema.withConstructorDefault(() => Option.some(DEFAULT_TIMESTAMP_FORMAT)),
-  ),
-  customCodexModels: Schema.Array(Schema.String).pipe(
-    Schema.withConstructorDefault(() => Option.some([])),
-  ),
-});
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {
   slug: string;
@@ -42,7 +25,7 @@ export interface AppModelOption {
   isCustom: boolean;
 }
 
-const DEFAULT_APP_SETTINGS = AppSettingsSchema.makeUnsafe({});
+export const DEFAULT_APP_SETTINGS = AppSettingsSchema.makeUnsafe({});
 
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
@@ -71,6 +54,14 @@ export function normalizeCustomModelSlugs(
   }
 
   return normalizedModels;
+}
+
+export function normalizeAppSettings(settings: AppSettings | null | undefined): AppSettings {
+  return {
+    ...DEFAULT_APP_SETTINGS,
+    ...settings,
+    customCodexModels: normalizeCustomModelSlugs(settings?.customCodexModels ?? [], "codex"),
+  };
 }
 
 export function getAppModelOptions(
@@ -145,7 +136,7 @@ export function resolveAppModelSelection(
 export function useAppSettings() {
   const [settings, setSettings] = useLocalStorage(
     APP_SETTINGS_STORAGE_KEY,
-    DEFAULT_APP_SETTINGS,
+    getBootDesktopAppSettings() ?? DEFAULT_APP_SETTINGS,
     AppSettingsSchema,
   );
 
@@ -163,8 +154,12 @@ export function useAppSettings() {
     setSettings(DEFAULT_APP_SETTINGS);
   }, [setSettings]);
 
+  useEffect(() => {
+    void persistDesktopSettings({ appSettings: normalizeAppSettings(settings) }).catch(() => {});
+  }, [settings]);
+
   return {
-    settings,
+    settings: normalizeAppSettings(settings),
     updateSettings,
     resetSettings,
     defaults: DEFAULT_APP_SETTINGS,

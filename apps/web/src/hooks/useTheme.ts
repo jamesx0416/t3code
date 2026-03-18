@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { getBootDesktopTheme, persistDesktopSettings } from "../desktopSettings";
 
-type Theme = "light" | "dark" | "system";
+export type Theme = "light" | "dark" | "system";
 type ThemeSnapshot = {
   theme: Theme;
   systemDark: boolean;
 };
 
-const STORAGE_KEY = "t3code:theme";
+export const THEME_STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
 let listeners: Array<() => void> = [];
@@ -21,7 +22,12 @@ function getSystemDark(): boolean {
 }
 
 function getStored(): Theme {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const bootTheme = getBootDesktopTheme();
+  if (bootTheme) {
+    return bootTheme;
+  }
+
+  const raw = localStorage.getItem(THEME_STORAGE_KEY);
   if (raw === "light" || raw === "dark" || raw === "system") return raw;
   return "system";
 }
@@ -85,7 +91,7 @@ function subscribe(listener: () => void): () => void {
 
   // Listen for storage changes from other tabs
   const handleStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY) {
+    if (e.key === THEME_STORAGE_KEY) {
       applyTheme(getStored(), true);
       emitChange();
     }
@@ -107,8 +113,9 @@ export function useTheme() {
     theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
 
   const setTheme = useCallback((next: Theme) => {
-    localStorage.setItem(STORAGE_KEY, next);
+    localStorage.setItem(THEME_STORAGE_KEY, next);
     applyTheme(next, true);
+    void persistDesktopSettings({ theme: next }).catch(() => {});
     emitChange();
   }, []);
 

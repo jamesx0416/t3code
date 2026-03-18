@@ -17,10 +17,17 @@ import {
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 import * as Effect from "effect/Effect";
+import { Schema } from "effect";
 import type {
+  DesktopSettings,
   DesktopTheme,
   DesktopUpdateActionResult,
   DesktopUpdateState,
+} from "@t3tools/contracts";
+import {
+  DesktopSettings as DesktopSettingsSchema,
+  DesktopSettingsInput as DesktopSettingsInputSchema,
+  DesktopSettingsSchemaVersion,
 } from "@t3tools/contracts";
 import { autoUpdater } from "electron-updater";
 
@@ -49,6 +56,8 @@ syncShellEnvironment();
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const CONFIRM_CHANNEL = "desktop:confirm";
 const SET_THEME_CHANNEL = "desktop:set-theme";
+const GET_INITIAL_SETTINGS_CHANNEL = "desktop:get-initial-settings";
+const SET_SETTINGS_CHANNEL = "desktop:set-settings";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
@@ -70,6 +79,7 @@ const COMMIT_HASH_DISPLAY_LENGTH = 12;
 const LOG_DIR = Path.join(STATE_DIR, "logs");
 const LOG_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const LOG_FILE_MAX_FILES = 10;
+const SETTINGS_FILE_NAME = "settings.json";
 const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
@@ -107,6 +117,42 @@ function logTimestamp(): string {
 
 function logScope(scope: string): string {
   return `${scope} run=${APP_RUN_ID}`;
+}
+
+function getSettingsPath(): string {
+  return Path.join(STATE_DIR, SETTINGS_FILE_NAME);
+}
+
+function decodeSettingsFile(raw: string): DesktopSettings {
+  return Schema.decodeSync(Schema.fromJsonString(DesktopSettingsSchema))(raw);
+}
+
+function readSettingsFileSync(): DesktopSettings | null {
+  try {
+    const raw = FS.readFileSync(getSettingsPath(), "utf8");
+    return decodeSettingsFile(raw);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+      console.warn("[desktop-settings] Failed to read settings.json", error);
+    }
+    return null;
+  }
+}
+
+async function writeSettingsFile(rawInput: unknown): Promise<DesktopSettings> {
+  const input = Schema.decodeUnknownSync(DesktopSettingsInputSchema)(rawInput);
+  const settings: DesktopSettings = {
+    version: app.getVersion(),
+    schemaVersion: DesktopSettingsSchemaVersion,
+    theme: input.theme,
+    appSettings: input.appSettings,
+  };
+  const settingsPath = getSettingsPath();
+  const tempPath = `${settingsPath}.tmp`;
+  await FS.promises.mkdir(Path.dirname(settingsPath), { recursive: true });
+  await FS.promises.writeFile(tempPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  await FS.promises.rename(tempPath, settingsPath);
+  return settings;
 }
 
 function sanitizeLogValue(value: string): string {
@@ -1105,6 +1151,16 @@ function registerIpcHandlers(): void {
 
     nativeTheme.themeSource = theme;
   });
+
+  ipcMain.removeAllListeners(GET_INITIAL_SETTINGS_CHANNEL);
+  ipcMain.on(GET_INITIAL_SETTINGS_CHANNEL, (event) => {
+    event.returnValue = readSettingsFileSync();
+  });
+
+  ipcMain.removeHandler(SET_SETTINGS_CHANNEL);
+  ipcMain.handle(SET_SETTINGS_CHANNEL, async (_event, rawSettings: unknown) =>
+    writeSettingsFile(rawSettings),
+  );
 
   ipcMain.removeHandler(CONTEXT_MENU_CHANNEL);
   ipcMain.handle(

@@ -46,6 +46,7 @@ import type {
   OrchestrationReadModel,
 } from "./orchestration";
 import { EditorId } from "./editor";
+import type { DesktopSettings, DesktopSettingsInput } from "./settings";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -96,9 +97,11 @@ export interface DesktopUpdateActionResult {
 
 export interface DesktopBridge {
   getWsUrl: () => string | null;
+  initialSettings: DesktopSettings | null;
   pickFolder: () => Promise<string | null>;
   confirm: (message: string) => Promise<boolean>;
   setTheme: (theme: DesktopTheme) => Promise<void>;
+  setSettings: (settings: DesktopSettingsInput) => Promise<DesktopSettings>;
   showContextMenu: <T extends string>(
     items: readonly ContextMenuItem<T>[],
     position?: { x: number; y: number },
