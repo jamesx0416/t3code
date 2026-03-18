@@ -6,6 +6,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   checkCodexProviderStatus,
+  checkCodexProviderStatusForInput,
   hasCustomModelProvider,
   parseAuthStatusFromOutput,
   readCodexConfigModelProvider,
@@ -38,6 +39,26 @@ function mockSpawnerLayer(
     ChildProcessSpawner.make((command) => {
       const cmd = command as unknown as { args: ReadonlyArray<string> };
       return Effect.succeed(mockHandle(handler(cmd.args)));
+    }),
+  );
+}
+
+function mockSpawnerLayerWithCommand(
+  handler: (command: {
+    command: string;
+    args: ReadonlyArray<string>;
+    env?: Record<string, string | undefined>;
+  }) => { stdout: string; stderr: string; code: number },
+) {
+  return Layer.succeed(
+    ChildProcessSpawner.ChildProcessSpawner,
+    ChildProcessSpawner.make((command) => {
+      const cmd = command as unknown as {
+        command: string;
+        args: ReadonlyArray<string>;
+        env?: Record<string, string | undefined>;
+      };
+      return Effect.succeed(mockHandle(handler(cmd)));
     }),
   );
 }
@@ -151,6 +172,39 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           mockSpawnerLayer((args) => {
             const joined = args.join(" ");
             if (joined === "--version") return { stdout: "codex 0.36.0\n", stderr: "", code: 0 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("uses overridden binary path and custom CODEX_HOME config for validation", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tmpDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-test-codex-home-" });
+        yield* fileSystem.writeFileString(
+          path.join(tmpDir, "config.toml"),
+          ['model_provider = "portkey"'].join("\n"),
+        );
+        const status = yield* checkCodexProviderStatusForInput({
+          binaryPath: "/custom/bin/codex",
+          homePath: tmpDir,
+        });
+        assert.strictEqual(status.provider, "codex");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "unknown");
+        assert.strictEqual(
+          status.message,
+          "Using a custom Codex model provider; OpenAI login check skipped.",
+        );
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayerWithCommand((command) => {
+            assert.strictEqual(command.command, "/custom/bin/codex");
+            const joined = command.args.join(" ");
+            if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
             throw new Error(`Unexpected args: ${joined}`);
           }),
         ),

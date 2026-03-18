@@ -616,6 +616,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
       },
     };
   }, [settings.codexBinaryPath, settings.codexHomePath]);
+  const refreshCodexProviderStatus = useCallback(async () => {
+    const api = readNativeApi();
+    if (!api || selectedProvider !== "codex") {
+      return;
+    }
+
+    await api.server.validateCodexCli({
+      binaryPath: settings.codexBinaryPath.trim() || undefined,
+      homePath: settings.codexHomePath.trim() || undefined,
+    });
+  }, [selectedProvider, settings.codexBinaryPath, settings.codexHomePath]);
   const selectedModelForPicker = selectedModel;
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings),
@@ -2601,7 +2612,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
         createdAt: messageCreatedAt,
       });
       turnStartSucceeded = true;
+      await refreshCodexProviderStatus().catch(() => undefined);
     })().catch(async (err: unknown) => {
+      await refreshCodexProviderStatus().catch(() => undefined);
       if (createdServerThreadForLocalDraft && !turnStartSucceeded) {
         await api.orchestration
           .dispatchCommand({
@@ -2880,6 +2893,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           interactionMode: nextInteractionMode,
           createdAt: messageCreatedAt,
         });
+        await refreshCodexProviderStatus().catch(() => undefined);
         // Optimistically open the plan sidebar when implementing (not refining).
         // "default" mode here means the agent is executing the plan, which produces
         // step-tracking activities that the sidebar will display.
@@ -2889,6 +2903,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         }
         sendInFlightRef.current = false;
       } catch (err) {
+        await refreshCodexProviderStatus().catch(() => undefined);
         setOptimisticUserMessages((existing) =>
           existing.filter((message) => message.id !== messageIdForSend),
         );
@@ -2913,6 +2928,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       selectedModel,
       selectedModelOptionsForDispatch,
       providerOptionsForDispatch,
+      refreshCodexProviderStatus,
       selectedProvider,
       setComposerDraftInteractionMode,
       setThreadError,
@@ -2990,6 +3006,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
           createdAt,
         });
       })
+      .then(async () => {
+        await refreshCodexProviderStatus().catch(() => undefined);
+      })
       .then(() => api.orchestration.getSnapshot())
       .then((snapshot) => {
         syncServerReadModel(snapshot);
@@ -3001,6 +3020,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         });
       })
       .catch(async (err) => {
+        await refreshCodexProviderStatus().catch(() => undefined);
         await api.orchestration
           .dispatchCommand({
             type: "thread.delete",
@@ -3036,6 +3056,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedModel,
     selectedModelOptionsForDispatch,
     providerOptionsForDispatch,
+    refreshCodexProviderStatus,
     selectedProvider,
     settings.enableAssistantStreaming,
     syncServerReadModel,

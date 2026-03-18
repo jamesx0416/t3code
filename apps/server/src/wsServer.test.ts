@@ -76,6 +76,7 @@ const defaultProviderStatuses: ReadonlyArray<ServerProviderStatus> = [
 
 const defaultProviderHealthService: ProviderHealthShape = {
   getStatuses: Effect.succeed(defaultProviderStatuses),
+  revalidateCodexStatus: () => Effect.succeed(defaultProviderStatuses[0]!),
 };
 
 class MockTerminalManager implements TerminalManagerShape {
@@ -833,6 +834,52 @@ describe("WebSocket Server", () => {
       availableEditors: expect.any(Array),
     });
     expectAvailableEditors((response.result as { availableEditors: unknown }).availableEditors);
+  });
+
+  it("revalidates Codex status and pushes server.configUpdated", async () => {
+    const revalidatedStatus: ServerProviderStatus = {
+      provider: "codex",
+      status: "error",
+      available: false,
+      authStatus: "unknown",
+      checkedAt: "2026-03-18T00:00:00.000Z",
+      message: "Codex CLI (/custom/codex) is not installed or not executable.",
+    };
+    let currentStatuses = defaultProviderStatuses;
+
+    server = await createTestServer({
+      providerHealth: {
+        getStatuses: Effect.sync(() => currentStatuses),
+        revalidateCodexStatus: () =>
+          Effect.sync(() => {
+            currentStatuses = [revalidatedStatus];
+            return revalidatedStatus;
+          }),
+      },
+    });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const [ws] = await connectAndAwaitWelcome(port);
+    connections.push(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverValidateCodexCli, {
+      binaryPath: "/custom/codex",
+      homePath: "/tmp/custom-codex-home",
+    });
+
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual(revalidatedStatus);
+
+    const push = await waitForPush(
+      ws,
+      WS_CHANNELS.serverConfigUpdated,
+      (message) => message.data.providers[0]?.checkedAt === revalidatedStatus.checkedAt,
+    );
+    expect(push.data).toEqual({
+      issues: [],
+      providers: [revalidatedStatus],
+    });
   });
 
   it("bootstraps default keybindings file when missing", async () => {

@@ -24,7 +24,11 @@ import type {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project";
-import type { ServerConfig } from "./server";
+import type {
+  ServerConfig,
+  ServerValidateCodexCliInput,
+  ServerValidateCodexCliResult,
+} from "./server";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -159,6 +163,7 @@ export interface NativeApi {
   server: {
     getConfig: () => Promise<ServerConfig>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
+    validateCodexCli: (input: ServerValidateCodexCliInput) => Promise<ServerValidateCodexCliResult>;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

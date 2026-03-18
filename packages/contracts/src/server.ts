@@ -64,6 +64,15 @@ export const ServerUpsertKeybindingResult = Schema.Struct({
 });
 export type ServerUpsertKeybindingResult = typeof ServerUpsertKeybindingResult.Type;
 
+export const ServerValidateCodexCliInput = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+  homePath: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerValidateCodexCliInput = typeof ServerValidateCodexCliInput.Type;
+
+export const ServerValidateCodexCliResult = ServerProviderStatus;
+export type ServerValidateCodexCliResult = typeof ServerValidateCodexCliResult.Type;
+
 export const ServerConfigUpdatedPayload = Schema.Struct({
   issues: ServerConfigIssues,
   providers: ServerProviderStatuses,

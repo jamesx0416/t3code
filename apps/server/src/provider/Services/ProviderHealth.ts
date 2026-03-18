@@ -6,15 +6,21 @@
  *
  * @module ProviderHealth
  */
-import type { ServerProviderStatus } from "@t3tools/contracts";
+import type { ServerProviderStatus, ServerValidateCodexCliInput } from "@t3tools/contracts";
 import { ServiceMap } from "effect";
 import type { Effect } from "effect";
 
 export interface ProviderHealthShape {
   /**
-   * Read provider health statuses computed at server startup.
+   * Read provider health statuses cached in memory for transport layers.
    */
-  readonly getStatuses: Effect.Effect<ReadonlyArray<ServerProviderStatus>>;
+  readonly getStatuses: Effect.Effect<ReadonlyArray<ServerProviderStatus>, never, never>;
+  /**
+   * Re-run the Codex CLI health check for the effective config and cache it.
+   */
+  readonly revalidateCodexStatus: (
+    input: ServerValidateCodexCliInput,
+  ) => Effect.Effect<ServerProviderStatus, never, never>;
 }
 
 export class ProviderHealth extends ServiceMap.Service<ProviderHealth, ProviderHealthShape>()(

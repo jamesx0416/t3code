@@ -92,12 +92,19 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
   }
 }
 
+function toOptionalTrimmedValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function SettingsRouteView() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
+  const [isValidatingCodexConfig, setIsValidatingCodexConfig] = useState(false);
+  const [codexValidationError, setCodexValidationError] = useState<string | null>(null);
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
   >({
@@ -145,6 +152,27 @@ function SettingsRouteView() {
         setIsOpeningKeybindings(false);
       });
   }, [availableEditors, keybindingsConfigPath]);
+
+  const validateCodexConfig = useCallback(
+    async (overrides?: { binaryPath?: string; homePath?: string }) => {
+      const api = ensureNativeApi();
+      setCodexValidationError(null);
+      setIsValidatingCodexConfig(true);
+      try {
+        await api.server.validateCodexCli({
+          binaryPath: toOptionalTrimmedValue(overrides?.binaryPath ?? codexBinaryPath),
+          homePath: toOptionalTrimmedValue(overrides?.homePath ?? codexHomePath),
+        });
+      } catch (error) {
+        setCodexValidationError(
+          error instanceof Error ? error.message : "Unable to refresh Codex provider status.",
+        );
+      } finally {
+        setIsValidatingCodexConfig(false);
+      }
+    },
+    [codexBinaryPath, codexHomePath],
+  );
 
   const addCustomModel = useCallback(
     (provider: ProviderKind) => {
@@ -334,6 +362,9 @@ function SettingsRouteView() {
                     id="codex-binary-path"
                     value={codexBinaryPath}
                     onChange={(event) => updateSettings({ codexBinaryPath: event.target.value })}
+                    onBlur={(event) =>
+                      void validateCodexConfig({ binaryPath: event.currentTarget.value })
+                    }
                     placeholder="codex"
                     spellCheck={false}
                   />
@@ -348,6 +379,9 @@ function SettingsRouteView() {
                     id="codex-home-path"
                     value={codexHomePath}
                     onChange={(event) => updateSettings({ codexHomePath: event.target.value })}
+                    onBlur={(event) =>
+                      void validateCodexConfig({ homePath: event.currentTarget.value })
+                    }
                     placeholder="/Users/you/.codex"
                     spellCheck={false}
                   />
@@ -367,16 +401,27 @@ function SettingsRouteView() {
                     size="xs"
                     variant="outline"
                     className="self-start"
-                    onClick={() =>
-                      updateSettings({
+                    onClick={() => {
+                      const nextSettings = {
                         codexBinaryPath: defaults.codexBinaryPath,
                         codexHomePath: defaults.codexHomePath,
-                      })
-                    }
+                      };
+                      updateSettings(nextSettings);
+                      void validateCodexConfig({
+                        binaryPath: nextSettings.codexBinaryPath,
+                        homePath: nextSettings.codexHomePath,
+                      });
+                    }}
                   >
                     Reset codex overrides
                   </Button>
                 </div>
+                {isValidatingCodexConfig ? (
+                  <p className="text-xs text-muted-foreground">Checking Codex CLI status...</p>
+                ) : null}
+                {codexValidationError ? (
+                  <p className="text-xs text-destructive">{codexValidationError}</p>
+                ) : null}
               </div>
             </section>
 

@@ -268,8 +268,6 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     ),
   );
 
-  const providerStatuses = yield* providerHealth.getStatuses;
-
   const clients = yield* Ref.make(new Set<WebSocket>());
   const logger = createLogger("ws");
   const readiness = yield* makeServerReadiness;
@@ -612,10 +610,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   ).pipe(Effect.forkIn(subscriptionsScope));
 
   yield* Stream.runForEach(keybindingsManager.streamChanges, (event) =>
-    pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
-      issues: event.issues,
-      providers: providerStatuses,
-    }),
+    providerHealth.getStatuses.pipe(
+      Effect.flatMap((providers) =>
+        pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
+          issues: event.issues,
+          providers,
+        }),
+      ),
+    ),
   ).pipe(Effect.forkIn(subscriptionsScope));
 
   yield* Scope.provide(orchestrationReactor.start, subscriptionsScope);
@@ -873,7 +875,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           keybindingsConfigPath,
           keybindings: keybindingsConfig.keybindings,
           issues: keybindingsConfig.issues,
-          providers: providerStatuses,
+          providers: yield* providerHealth.getStatuses,
           availableEditors,
         };
 
@@ -881,6 +883,18 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         const body = stripRequestTag(request.body);
         const keybindingsConfig = yield* keybindingsManager.upsertKeybindingRule(body);
         return { keybindings: keybindingsConfig, issues: [] };
+      }
+
+      case WS_METHODS.serverValidateCodexCli: {
+        const body = stripRequestTag(request.body);
+        const status = yield* providerHealth.revalidateCodexStatus(body);
+        const keybindingsConfig = yield* keybindingsManager.loadConfigState;
+        const providers = yield* providerHealth.getStatuses;
+        yield* pushBus.publishAll(WS_CHANNELS.serverConfigUpdated, {
+          issues: keybindingsConfig.issues,
+          providers,
+        });
+        return status;
       }
 
       default: {
